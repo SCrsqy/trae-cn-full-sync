@@ -1,140 +1,181 @@
 -- =====================================================
--- 数据版本化与审计表设计
--- 支持数据追溯、回滚、多源一致性校验
+-- 数据分析与预测平台 - 数据库表结构
 -- =====================================================
 
--- 1. 审计日志表(替代直接UPDATE/DELETE)
-CREATE TABLE IF NOT EXISTS lottery_data_audit (
+-- =====================================================
+-- 3.1 开奖数据表（澳门）
+-- =====================================================
+CREATE TABLE IF NOT EXISTS lottery_data_am (
     id BIGSERIAL PRIMARY KEY,
-    source_id VARCHAR(10) NOT NULL,  -- 'AM' or 'HK'
-    issue_number VARCHAR(20) NOT NULL,
-    operation VARCHAR(10) NOT NULL,  -- 'INSERT', 'UPDATE', 'DELETE'
-    data_snapshot JSONB NOT NULL,    -- 完整数据快照
-    change_reason VARCHAR(255),       -- 变更原因
-    source_verified BOOLEAN DEFAULT FALSE,  -- 是否通过多源校验
-    created_at TIMESTAMP DEFAULT NOW(),
-    created_by VARCHAR(100) DEFAULT CURRENT_USER
+    issue_number VARCHAR(20) NOT NULL UNIQUE,           -- 期号 "163期"
+    draw_date DATE NOT NULL,
+    draw_date_lunar VARCHAR(30),                        -- 农历日期字符串
+    lunar_year INTEGER,                                 -- 农历年份（如2026）
+    lunar_zodiac_year VARCHAR(10),                      -- 对应的农历生肖年（如"马"）
+    is_first_after_chunjie BOOLEAN DEFAULT FALSE,      -- 是否春节后首期
+    numbers INTEGER[] NOT NULL,                         -- 7个号码数组
+    zodiacs VARCHAR(10)[] NOT NULL,                    -- 对应生肖数组
+    single_count INTEGER,                               -- 奇数个数
+    double_count INTEGER,                               -- 偶数个数
+    big_count INTEGER,                                  -- 大数个数（≥25）
+    small_count INTEGER,                               -- 小数个数（<25）
+    interval_distribution JSONB,                        -- 区间分布
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- 审计表索引
-CREATE INDEX idx_audit_source_issue ON lottery_data_audit(source_id, issue_number);
-CREATE INDEX idx_audit_created_at ON lottery_data_audit(created_at);
-CREATE INDEX idx_audit_operation ON lottery_data_audit(operation);
+CREATE INDEX IF NOT EXISTS idx_am_issue ON lottery_data_am(issue_number);
+CREATE INDEX IF NOT EXISTS idx_am_draw_date ON lottery_data_am(draw_date);
+CREATE INDEX IF NOT EXISTS idx_am_lunar_year ON lottery_data_am(lunar_year);
 
--- 2. 多源校验记录表
-CREATE TABLE IF NOT EXISTS source_verification (
+-- =====================================================
+-- 开奖数据表（香港）
+-- =====================================================
+CREATE TABLE IF NOT EXISTS lottery_data_hk (
+    id BIGSERIAL PRIMARY KEY,
+    issue_number VARCHAR(20) NOT NULL UNIQUE,           -- 期号 "163期"
+    draw_date DATE NOT NULL,
+    draw_date_lunar VARCHAR(30),                        -- 农历日期字符串
+    lunar_year INTEGER,                                 -- 农历年份（如2026）
+    lunar_zodiac_year VARCHAR(10),                      -- 对应的农历生肖年（如"马"）
+    is_first_after_chunjie BOOLEAN DEFAULT FALSE,      -- 是否春节后首期
+    numbers INTEGER[] NOT NULL,                         -- 7个号码数组
+    zodiacs VARCHAR(10)[] NOT NULL,                    -- 对应生肖数组
+    single_count INTEGER,                               -- 奇数个数
+    double_count INTEGER,                               -- 偶数个数
+    big_count INTEGER,                                  -- 大数个数（≥25）
+    small_count INTEGER,                               -- 小数个数（<25）
+    interval_distribution JSONB,                        -- 区间分布
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_hk_issue ON lottery_data_hk(issue_number);
+CREATE INDEX IF NOT EXISTS idx_hk_draw_date ON lottery_data_hk(draw_date);
+CREATE INDEX IF NOT EXISTS idx_hk_lunar_year ON lottery_data_hk(lunar_year);
+
+-- =====================================================
+-- 3.2 预测记录表（澳门）
+-- =====================================================
+CREATE TABLE IF NOT EXISTS predictions_am (
+    id BIGSERIAL PRIMARY KEY,
+    issue_number VARCHAR(20) NOT NULL UNIQUE,           -- 预测对应的期号
+    predict_date DATE NOT NULL,                         -- 预测生成日期
+    top6_zodiacs JSONB,          -- [{"zodiac":"鼠","predicted_accuracy":78.5}, ...]
+    triple4_groups JSONB,        -- [{"group":["鼠","龙","猴"],"numbers":[7,19,31,3,15,27,11,23,35]}, ...]
+    top12_numbers JSONB,         -- [{"number":31,"zodiac":"鼠","frequency":12}, ...]
+    actual_result JSONB,                                -- 实际开奖结果（回填）
+    hit_rate_top6 DECIMAL(5,2),                         -- 特肖6只命中率(%)
+    hit_rate_triple4 DECIMAL(5,2),                      -- 三肖4组命中率(%)
+    hit_rate_top12 DECIMAL(5,2),                        -- 热门12数字命中率(%)
+    accuracy_rate DECIMAL(5,2),                         -- 综合加权准确率(%)
+    hit_status JSONB,                                   -- 详细命中情况
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_pred_am_issue ON predictions_am(issue_number);
+CREATE INDEX IF NOT EXISTS idx_pred_am_date ON predictions_am(predict_date);
+
+-- =====================================================
+-- 预测记录表（香港）
+-- =====================================================
+CREATE TABLE IF NOT EXISTS predictions_hk (
+    id BIGSERIAL PRIMARY KEY,
+    issue_number VARCHAR(20) NOT NULL UNIQUE,           -- 预测对应的期号
+    predict_date DATE NOT NULL,                         -- 预测生成日期
+    top6_zodiacs JSONB,          -- [{"zodiac":"鼠","predicted_accuracy":78.5}, ...]
+    triple4_groups JSONB,        -- [{"group":["鼠","龙","猴"],"numbers":[7,19,31,3,15,27,11,23,35]}, ...]
+    top12_numbers JSONB,         -- [{"number":31,"zodiac":"鼠","frequency":12}, ...]
+    actual_result JSONB,                                -- 实际开奖结果（回填）
+    hit_rate_top6 DECIMAL(5,2),                         -- 特肖6只命中率(%)
+    hit_rate_triple4 DECIMAL(5,2),                      -- 三肖4组命中率(%)
+    hit_rate_top12 DECIMAL(5,2),                        -- 热门12数字命中率(%)
+    accuracy_rate DECIMAL(5,2),                         -- 综合加权准确率(%)
+    hit_status JSONB,                                   -- 详细命中情况
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_pred_hk_issue ON predictions_hk(issue_number);
+CREATE INDEX IF NOT EXISTS idx_pred_hk_date ON predictions_hk(predict_date);
+
+-- =====================================================
+-- 3.3 准确率统计汇总表
+-- =====================================================
+CREATE TABLE IF NOT EXISTS accuracy_summary (
+    id SERIAL PRIMARY KEY,
+    source_id VARCHAR(10) NOT NULL,   -- 'AM' or 'HK'
+    stat_date DATE NOT NULL,
+    avg_accuracy_7d DECIMAL(5,2),
+    avg_accuracy_30d DECIMAL(5,2),
+    best_issue VARCHAR(20),
+    worst_issue VARCHAR(20),
+    details JSONB,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_acc_summary_source_date ON accuracy_summary(source_id, stat_date);
+
+-- =====================================================
+-- 审计日志表（数据版本化）
+-- =====================================================
+CREATE TABLE IF NOT EXISTS data_audit (
+    id BIGSERIAL PRIMARY KEY,
+    table_name VARCHAR(50) NOT NULL,
+    operation VARCHAR(10) NOT NULL,   -- INSERT/UPDATE/DELETE
+    record_id BIGINT,
+    data_snapshot JSONB,
+    valid_from TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    valid_to TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_table ON data_audit(table_name);
+CREATE INDEX IF NOT EXISTS idx_audit_time ON data_audit(valid_from);
+
+-- =====================================================
+-- 多源校验表
+-- =====================================================
+CREATE TABLE IF NOT EXISTS source_validation (
     id BIGSERIAL PRIMARY KEY,
     source_id VARCHAR(10) NOT NULL,
-    issue_number VARCHAR(20) NOT NULL,
-    source_name VARCHAR(50) NOT NULL,  -- 'primary', 'backup1', 'backup2'
-    raw_data JSONB NOT NULL,           -- 原始爬取数据
-    fetch_status VARCHAR(20) NOT NULL, -- 'success', 'failed', 'timeout'
+    url VARCHAR(255) NOT NULL,
+    response_hash VARCHAR(64),
+    record_count INTEGER,
+    validation_status VARCHAR(20) DEFAULT 'pending',  -- pending/success/failed
     error_message TEXT,
-    fetched_at TIMESTAMP DEFAULT NOW(),
-    UNIQUE(source_id, issue_number, source_name)
+    fetched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_verification_issue ON source_verification(source_id, issue_number);
+CREATE INDEX IF NOT EXISTS idx_validation_source ON source_validation(source_id);
+CREATE INDEX IF NOT EXISTS idx_validation_status ON source_validation(validation_status);
 
--- 3. 数据一致性状态表
-CREATE TABLE IF NOT EXISTS data_consistency (
-    id BIGSERIAL PRIMARY KEY,
-    source_id VARCHAR(10) NOT NULL,
-    issue_number VARCHAR(20) NOT NULL,
-    consistency_status VARCHAR(20) NOT NULL,  -- 'consistent', 'inconsistent', 'pending_review'
-    discrepancy_details JSONB,  -- 具体差异描述
-    resolved_at TIMESTAMP,
-    resolved_by VARCHAR(100),
-    created_at TIMESTAMP DEFAULT NOW()
-);
+-- =====================================================
+-- 物化视图：统计汇总
+-- =====================================================
+CREATE MATERIALIZED VIEW IF NOT EXISTS lottery_statistics_am AS
+SELECT
+    lunar_zodiac_year,
+    COUNT(*) as total_issues,
+    AVG(single_count) as avg_single_count,
+    AVG(double_count) as avg_double_count,
+    AVG(big_count) as avg_big_count,
+    AVG(small_count) as avg_small_count
+FROM lottery_data_am
+GROUP BY lunar_zodiac_year;
 
-CREATE INDEX idx_consistency_status ON data_consistency(consistency_status);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_stats_am_zodiac ON lottery_statistics_am(lunar_zodiac_year);
 
--- 4. 触发器函数: 自动记录审计日志
-CREATE OR REPLACE FUNCTION fn_lottery_audit_trigger()
-RETURNS TRIGGER AS $$
-BEGIN
-    -- 记录INSERT操作
-    IF TG_OP = 'INSERT' THEN
-        INSERT INTO lottery_data_audit (source_id, issue_number, operation, data_snapshot)
-        VALUES (NEW.source_id, NEW.issue_number, 'INSERT', to_jsonb(NEW));
-        RETURN NEW;
+CREATE MATERIALIZED VIEW IF NOT EXISTS lottery_statistics_hk AS
+SELECT
+    lunar_zodiac_year,
+    COUNT(*) as total_issues,
+    AVG(single_count) as avg_single_count,
+    AVG(double_count) as avg_double_count,
+    AVG(big_count) as avg_big_count,
+    AVG(small_count) as avg_small_count
+FROM lottery_data_hk
+GROUP BY lunar_zodiac_year;
 
-    -- 记录UPDATE操作(保留旧值)
-    ELSIF TG_OP = 'UPDATE' THEN
-        INSERT INTO lottery_data_audit (source_id, issue_number, operation, data_snapshot, change_reason)
-        VALUES (OLD.source_id, OLD.issue_number, 'UPDATE', to_jsonb(OLD), 
-                'Updated at ' || NOW() || ' from ' || COALESCE(OLD.numbers::text, 'null') || ' to ' || COALESCE(NEW.numbers::text, 'null'));
-        RETURN NEW;
-
-    -- 记录DELETE操作
-    ELSIF TG_OP = 'DELETE' THEN
-        INSERT INTO lottery_data_audit (source_id, issue_number, operation, data_snapshot)
-        VALUES (OLD.source_id, OLD.issue_number, 'DELETE', to_jsonb(OLD));
-        RETURN OLD;
-    END IF;
-
-    RETURN NULL;
-END;
-$$ LANGUAGE plpgsql;
-
--- 5. 视图: 当前有效数据(只读)
-CREATE OR REPLACE VIEW v_current_lottery_data AS
-WITH latest_records AS (
-    SELECT DISTINCT ON (source_id, issue_number)
-           source_id, issue_number, data_snapshot->>'issue_number' as issue_num,
-           data_snapshot
-    FROM lottery_data_audit
-    WHERE operation != 'DELETE'
-    ORDER BY source_id, issue_number, created_at DESC
-)
-SELECT 
-    (data_snapshot->>'source_id')::VARCHAR as source_id,
-    (data_snapshot->>'issue_number')::VARCHAR as issue_number,
-    (data_snapshot->>'draw_date')::DATE as draw_date,
-    (data_snapshot->>'numbers')::INTEGER[] as numbers,
-    (data_snapshot->>'zodiacs')::VARCHAR[] as zodiacs,
-    (data_snapshot->>'lunar_zodiac_year')::VARCHAR as lunar_zodiac_year
-FROM latest_records;
-
--- 6. 物化视图: 准确率统计(定期刷新)
-CREATE MATERIALIZED VIEW IF NOT EXISTS mv_accuracy_stats AS
-SELECT 
-    source_id,
-    DATE_TRUNC('day', created_at) as stat_date,
-    COUNT(*) as total_predictions,
-    AVG(hit_rate_top6) as avg_hit_rate_top6,
-    AVG(hit_rate_triple4) as avg_hit_rate_triple4,
-    AVG(hit_rate_top12) as avg_hit_rate_top12,
-    AVG(accuracy_rate) as avg_accuracy_rate,
-    MAX(accuracy_rate) as best_accuracy,
-    MIN(accuracy_rate) as worst_accuracy
-FROM predictions_am
-GROUP BY source_id, DATE_TRUNC('day', created_at)
-UNION ALL
-SELECT 
-    source_id,
-    DATE_TRUNC('day', created_at) as stat_date,
-    COUNT(*) as total_predictions,
-    AVG(hit_rate_top6) as avg_hit_rate_top6,
-    AVG(hit_rate_triple4) as avg_hit_rate_triple4,
-    AVG(hit_rate_top12) as avg_hit_rate_top12,
-    AVG(accuracy_rate) as avg_accuracy_rate,
-    MAX(accuracy_rate) as best_accuracy,
-    MIN(accuracy_rate) as worst_accuracy
-FROM predictions_hk
-GROUP BY source_id, DATE_TRUNC('day', created_at);
-
-CREATE UNIQUE INDEX idx_mv_accuracy ON mv_accuracy_stats(source_id, stat_date);
-
--- 7. 刷新物化视图的函数
-CREATE OR REPLACE FUNCTION refresh_accuracy_stats()
-RETURNS VOID AS $$
-BEGIN
-    REFRESH MATERIALIZED VIEW CONCURRENTLY mv_accuracy_stats;
-END;
-$$ LANGUAGE plpgsql;
-
-COMMENT ON TABLE lottery_data_audit IS '数据变更审计日志，支持追溯和回滚';
-COMMENT ON TABLE source_verification IS '多源数据校验记录';
-COMMENT ON TABLE data_consistency IS '数据一致性状态追踪';
+CREATE UNIQUE INDEX IF NOT EXISTS idx_stats_hk_zodiac ON lottery_statistics_hk(lunar_zodiac_year);

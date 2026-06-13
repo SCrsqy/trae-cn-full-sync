@@ -2,6 +2,7 @@
 统计分析预测报告生成器
 自动生成包含统计分析、推算、预测数据的Excel报告
 支持澳门(M)和香港(HK)两个数据源
+遵循核心业务规则：农历生肖计算、预测推荐格式、准确率计算等
 """
 import sqlite3
 import json
@@ -19,8 +20,10 @@ except ImportError:
     openpyxl = None
 
 from time_weighted_analyzer import TimeWeightedAnalyzer, DrawRecord
-from event_driven_accuracy import AccuracyCalculator
+from event_driven_accuracy import AccuracyCalculator as OldAccuracyCalculator
 from data_sources import DataSourceManager, DATA_SOURCES
+from business_rules import PredictionGenerator, AccuracyCalculator
+from lunar_zodiac import get_zodiac_for_number, zodiac_to_numbers
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -53,6 +56,7 @@ class ReportGenerator:
     报告生成器
     生成包含统计分析、推算预测的Excel报告
     支持澳门(M)和香港(HK)两个数据源
+    遵循核心业务规则
     """
 
     def __init__(self, db_path: str, output_path: str, sources: List[str] = None):
@@ -60,7 +64,8 @@ class ReportGenerator:
         self.output_path = output_path
         self.sources = sources or ['AM', 'HK']  # 默认两个数据源都生成
         self.analyzer = TimeWeightedAnalyzer(halflife_days=30)
-        self.accuracy_calculator = AccuracyCalculator(ZODIAC_MAPPING)
+        self.prediction_generator = PredictionGenerator(db_path)
+        self.accuracy_calculator = AccuracyCalculator(db_path)
         self.source_manager = DataSourceManager()
 
         # 样式定义
@@ -233,7 +238,7 @@ class ReportGenerator:
             conn.close()
 
     def write_to_excel(self, all_stats: Dict, all_predictions: Dict, all_accuracies: Dict):
-        """写入Excel文件(支持多数据源)"""
+        """写入Excel文件(完整导出格式)"""
         if openpyxl is None:
             raise ImportError("openpyxl is required. Install with: pip install openpyxl")
 
@@ -242,28 +247,229 @@ class ReportGenerator:
         # 删除默认sheet
         wb.remove(wb.active)
 
-        # 为每个数据源创建Sheet
-        for source in self.sources:
-            source_name = "澳门" if source == "AM" else "香港"
-            stats = all_stats.get(source, {})
-            prediction = all_predictions.get(source, {})
-            accuracy = all_accuracies.get(source, {})
-
-            # 创建数据源Sheet
-            self._create_source_sheet(wb, source, source_name, stats, prediction, accuracy)
-
-        # Sheet: 历史数据(合并)
-        self._write_history_sheet_all(wb)
-
-        # Sheet: 数据源配置
-        self._write_source_config_sheet(wb)
-
-        # Sheet: 系统信息
-        self._write_info_sheet_all(wb, all_stats, all_predictions, all_accuracies)
+        # Sheet1: AM预测对比
+        self._write_prediction_compare_sheet(wb, 'AM', all_predictions.get('AM', {}), '澳门预测对比')
+        
+        # Sheet2: HK预测对比
+        self._write_prediction_compare_sheet(wb, 'HK', all_predictions.get('HK', {}), '香港预测对比')
+        
+        # Sheet3: AM历史开奖原始数据
+        self._write_history_data_sheet(wb, 'AM', '澳门历史开奖数据')
+        
+        # Sheet4: HK历史开奖原始数据
+        self._write_history_data_sheet(wb, 'HK', '香港历史开奖数据')
+        
+        # Sheet5: 系统元数据
+        self._write_metadata_sheet(wb)
 
         # 保存文件
         wb.save(self.output_path)
         logger.info(f"报告已保存: {self.output_path}")
+    
+    def _write_prediction_compare_sheet(self, wb, source_id, prediction, sheet_name):
+        """写入预测对比Sheet"""
+        ws = wb.create_sheet(title=sheet_name)
+        
+        row = 1
+        # 标题
+        ws.cell(row=row, column=1, value=sheet_name).font = self.title_font
+        ws.merge_cells('A1:K1')
+        row += 2
+        
+        # 表头
+        headers = [
+            '期号', '特肖6只预测', '实际特肖', '特肖准确率(%)',
+            '三肖4组预测', '实际生肖分布', '三肖准确率(%)',
+            '热门12数字', '实际数字', '数字准确率(%)', '综合准确率(%)'
+        ]
+        
+        for col, header in enumerate(headers, 1):
+            cell = ws.cell(row=row, column=col, value=header)
+            cell.font = self.header_font
+            cell.fill = self.source_colors.get(source_id, self.header_fill)
+            cell.alignment = self.center_align
+            cell.border = self.border
+        row += 1
+        
+        # 获取预测记录
+        predictions = self._get_predictions_from_db(source_id)
+        
+        for pred in predictions:
+            ws.cell(row=row, column=1, value=pred.get('issue_number', '')).border = self.border
+            
+            top6 = pred.get('top6_zodiacs', [])
+            top6_str = ', '.join([item.get('zodiac', '') for item in top6])
+            ws.cell(row=row, column=2, value=top6_str).border = self.border
+            
+            ws.cell(row=row, column=3, value=pred.get('actual_zodiacs', '')).border = self.border
+            ws.cell(row=row, column=4, value=pred.get('hit_rate_top6', '')).border = self.border
+            
+            triple4 = pred.get('triple4_groups', [])
+            triple4_str = ', '.join([str(g.get('group', [])) for g in triple4])
+            ws.cell(row=row, column=5, value=triple4_str).border = self.border
+            
+            ws.cell(row=row, column=6, value=pred.get('actual_zodiacs', '')).border = self.border
+            ws.cell(row=row, column=7, value=pred.get('hit_rate_triple4', '')).border = self.border
+            
+            top12 = pred.get('top12_numbers', [])
+            top12_str = ', '.join([str(item.get('number', '')) for item in top12])
+            ws.cell(row=row, column=8, value=top12_str).border = self.border
+            
+            ws.cell(row=row, column=9, value=pred.get('actual_numbers', '')).border = self.border
+            ws.cell(row=row, column=10, value=pred.get('hit_rate_top12', '')).border = self.border
+            ws.cell(row=row, column=11, value=pred.get('accuracy_rate', '')).border = self.border
+            
+            row += 1
+        
+        for col in range(1, 12):
+            ws.column_dimensions[get_column_letter(col)].width = 15
+    
+    def _write_history_data_sheet(self, wb, source_id, sheet_name):
+        """写入历史开奖数据Sheet"""
+        ws = wb.create_sheet(title=sheet_name)
+        
+        row = 1
+        ws.cell(row=row, column=1, value=sheet_name).font = self.title_font
+        ws.merge_cells('A1:G1')
+        row += 2
+        
+        headers = ['期号', '开奖日期', '农历日期', '农历年份', '生肖年份', '号码', '生肖']
+        
+        for col, header in enumerate(headers, 1):
+            cell = ws.cell(row=row, column=col, value=header)
+            cell.font = self.header_font
+            cell.fill = self.source_colors.get(source_id, self.header_fill)
+            cell.alignment = self.center_align
+            cell.border = self.border
+        row += 1
+        
+        history = self.load_history_data(source_id)
+        
+        for record in history:
+            # 处理DrawRecord对象或字典
+            if hasattr(record, 'issue_number'):
+                issue_number = record.issue_number
+                draw_date = record.draw_date
+                numbers = record.numbers
+                zodiacs = record.zodiacs
+                draw_date_lunar = getattr(record, 'draw_date_lunar', '')
+                lunar_year = getattr(record, 'lunar_year', '')
+                lunar_zodiac_year = getattr(record, 'lunar_zodiac_year', '')
+            else:
+                issue_number = record.get('issue_number', '')
+                draw_date = record.get('draw_date', '')
+                numbers = record.get('numbers', [])
+                zodiacs = record.get('zodiacs', [])
+                draw_date_lunar = record.get('draw_date_lunar', '')
+                lunar_year = record.get('lunar_year', '')
+                lunar_zodiac_year = record.get('lunar_zodiac_year', '')
+            
+            ws.cell(row=row, column=1, value=issue_number).border = self.border
+            ws.cell(row=row, column=2, value=draw_date).border = self.border
+            ws.cell(row=row, column=3, value=draw_date_lunar).border = self.border
+            ws.cell(row=row, column=4, value=lunar_year).border = self.border
+            ws.cell(row=row, column=5, value=lunar_zodiac_year).border = self.border
+            
+            ws.cell(row=row, column=6, value=', '.join(map(str, numbers))).border = self.border
+            ws.cell(row=row, column=7, value=', '.join(zodiacs)).border = self.border
+            
+            row += 1
+        
+        for col in range(1, 8):
+            ws.column_dimensions[get_column_letter(col)].width = 15
+    
+    def _write_metadata_sheet(self, wb):
+        """写入系统元数据Sheet"""
+        ws = wb.create_sheet(title="系统元数据")
+        
+        row = 1
+        ws.cell(row=row, column=1, value="系统元数据").font = self.title_font
+        ws.merge_cells('A1:B1')
+        row += 2
+        
+        ws.cell(row=row, column=1, value="数据源配置").font = Font(bold=True)
+        row += 1
+        
+        for source in DATA_SOURCES:
+            # 处理DataSource对象或字典
+            if hasattr(source, 'name'):
+                name = source.name
+                code = source.code
+                url = source.url
+            else:
+                name = source.get('name', '')
+                code = source.get('code', '')
+                url = source.get('url', '')
+            
+            ws.cell(row=row, column=1, value=f"{name} ({code})").border = self.border
+            ws.cell(row=row, column=2, value=url).border = self.border
+            row += 1
+        
+        row += 1
+        ws.cell(row=row, column=1, value="生成时间").font = Font(bold=True)
+        row += 1
+        ws.cell(row=row, column=1, value=datetime.now().strftime('%Y-%m-%d %H:%M:%S')).border = self.border
+        
+        row += 1
+        ws.cell(row=row, column=1, value="生肖映射版本").font = Font(bold=True)
+        row += 1
+        ws.cell(row=row, column=1, value="2026马年版").border = self.border
+        
+        row += 1
+        ws.cell(row=row, column=1, value="算法说明").font = Font(bold=True)
+        row += 1
+        ws.cell(row=row, column=1, value="特肖命中率").border = self.border
+        ws.cell(row=row, column=2, value="命中生肖数/6 × 100%").border = self.border
+        row += 1
+        ws.cell(row=row, column=1, value="三肖命中率").border = self.border
+        ws.cell(row=row, column=2, value="命中组数/4 × 100%").border = self.border
+        row += 1
+        ws.cell(row=row, column=1, value="数字命中率").border = self.border
+        ws.cell(row=row, column=2, value="命中数字数/7 × 100%").border = self.border
+        row += 1
+        ws.cell(row=row, column=1, value="综合准确率").border = self.border
+        ws.cell(row=row, column=2, value="特肖×0.6 + 三肖×0.3 + 数字×0.1").border = self.border
+        
+        ws.column_dimensions['A'].width = 20
+        ws.column_dimensions['B'].width = 60
+    
+    def _get_predictions_from_db(self, source_id):
+        """从数据库获取预测记录"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute(f"""
+                SELECT p.issue_number, p.top6_zodiacs, p.triple4_groups, p.top12_numbers,
+                       p.hit_rate_top6, p.hit_rate_triple4, p.hit_rate_top12, p.accuracy_rate,
+                       l.zodiacs AS actual_zodiacs, l.numbers AS actual_numbers
+                FROM predictions_{source_id.lower()} p
+                LEFT JOIN lottery_data_{source_id.lower()} l ON p.issue_number = l.issue_number
+                ORDER BY p.issue_number DESC
+            """)
+            
+            results = []
+            for row in cursor.fetchall():
+                try:
+                    results.append({
+                        'issue_number': row[0],
+                        'top6_zodiacs': json.loads(row[1]) if row[1] else [],
+                        'triple4_groups': json.loads(row[2]) if row[2] else [],
+                        'top12_numbers': json.loads(row[3]) if row[3] else [],
+                        'hit_rate_top6': row[4],
+                        'hit_rate_triple4': row[5],
+                        'hit_rate_top12': row[6],
+                        'accuracy_rate': row[7],
+                        'actual_zodiacs': ', '.join(json.loads(row[8])) if row[8] else '',
+                        'actual_numbers': ', '.join(map(str, json.loads(row[9]))) if row[9] else ''
+                    })
+                except:
+                    continue
+            
+            return results
+        
+        finally:
+            conn.close()
 
     def _create_source_sheet(self, wb, source: str, source_name: str, stats: Dict, prediction: Dict, accuracy: Dict):
         """为单个数据源创建Sheet"""
@@ -331,19 +537,31 @@ class ReportGenerator:
         row += 1
 
         # 特肖6只
-        ws.cell(row=row, column=1, value="特肖6只:").font = Font(bold=True)
+        ws.cell(row=row, column=1, value="特肖6只(含数字与准确率):").font = Font(bold=True)
         row += 1
+        
+        headers = ['排名', '生肖', '对应数字', '命中率']
+        for col, header in enumerate(headers, 1):
+            cell = ws.cell(row=row, column=col, value=header)
+            cell.font = self.header_font
+            cell.fill = self.source_colors.get(source, self.header_fill)
+            cell.alignment = self.center_align
+            cell.border = self.border
+        row += 1
+        
         top6 = prediction.get('top6_zodiacs', [])
-        for i, zodiac in enumerate(top6, 1):
-            ws.cell(row=row, column=i, value=zodiac)
-            ws.cell(row=row, column=i).alignment = self.center_align
-            ws.cell(row=row, column=i).border = self.border
+        for i, item in enumerate(top6, 1):
+            ws.cell(row=row, column=1, value=i).border = self.border
+            ws.cell(row=row, column=2, value=item.get('zodiac', '')).border = self.border
+            ws.cell(row=row, column=3, value=str(item.get('numbers', []))).border = self.border
+            ws.cell(row=row, column=4, value=f"{item.get('accuracy', 0) * 100:.1f}%").border = self.border
+            row += 1
         row += 2
 
         # 4组三肖
-        ws.cell(row=row, column=1, value="4组三肖:").font = Font(bold=True)
+        ws.cell(row=row, column=1, value="4组三肖(含数字):").font = Font(bold=True)
         row += 1
-        headers = ['组别', '生肖', '对应数字']
+        headers = ['组别', '生肖', '对应数字', '频率']
         for col, header in enumerate(headers, 1):
             cell = ws.cell(row=row, column=col, value=header)
             cell.font = self.header_font
@@ -354,27 +572,36 @@ class ReportGenerator:
 
         for i, group_data in enumerate(prediction.get('triple4_groups', []), 1):
             ws.cell(row=row, column=1, value=f"第{i}组").border = self.border
-            ws.cell(row=row, column=2, value='/'.join(group_data['group'])).border = self.border
-            ws.cell(row=row, column=3, value=str(group_data['numbers'])).border = self.border
+            ws.cell(row=row, column=2, value='/'.join(group_data.get('zodiacs', []))).border = self.border
+            ws.cell(row=row, column=3, value=str(group_data.get('numbers', []))).border = self.border
+            ws.cell(row=row, column=4, value=group_data.get('frequency', 0)).border = self.border
             row += 1
-
         row += 2
 
         # 热门12数字
-        ws.cell(row=row, column=1, value="热门12数字:").font = Font(bold=True)
+        ws.cell(row=row, column=1, value="热门12数字(含生肖):").font = Font(bold=True)
         row += 1
-        top12 = prediction.get('top12_numbers', [])
-        for i, num in enumerate(top12, 1):
-            col = (i - 1) % 6 + 1
-            r = row + (i - 1) // 6
-            cell = ws.cell(row=r, column=col, value=num)
+        headers = ['排名', '数字', '生肖', '频率']
+        for col, header in enumerate(headers, 1):
+            cell = ws.cell(row=row, column=col, value=header)
+            cell.font = self.header_font
+            cell.fill = self.source_colors.get(source, self.header_fill)
             cell.alignment = self.center_align
             cell.border = self.border
+        row += 1
+        
+        top12 = prediction.get('top12_numbers', [])
+        for i, item in enumerate(top12, 1):
+            ws.cell(row=row, column=1, value=i).border = self.border
+            ws.cell(row=row, column=2, value=item.get('number', '')).border = self.border
+            ws.cell(row=row, column=3, value=item.get('zodiac', '')).border = self.border
+            ws.cell(row=row, column=4, value=item.get('frequency', 0)).border = self.border
+            row += 1
 
         # 调整列宽
-        ws.column_dimensions['A'].width = 12
+        ws.column_dimensions['A'].width = 10
         ws.column_dimensions['B'].width = 12
-        ws.column_dimensions['C'].width = 12
+        ws.column_dimensions['C'].width = 30
         ws.column_dimensions['D'].width = 12
         ws.column_dimensions['E'].width = 12
         ws.column_dimensions['F'].width = 12
@@ -736,7 +963,7 @@ class ReportGenerator:
         ws.column_dimensions['B'].width = 40
 
     def generate_report(self) -> bool:
-        """生成完整报告"""
+        """生成完整报告（遵循核心业务规则）"""
         try:
             logger.info("开始生成报告...")
             logger.info(f"数据源: {self.sources}")
@@ -761,11 +988,16 @@ class ReportGenerator:
                 stats['source_name'] = source_name
                 all_stats[source] = stats
 
-                # 3. 生成预测
-                prediction = self.generate_prediction(stats)
-                all_predictions[source] = prediction
+                # 3. 使用业务规则模块生成预测
+                logger.info("使用业务规则模块生成预测...")
+                prediction = self.prediction_generator.generate_prediction(source)
+                all_predictions[source] = prediction.to_dict()
 
-                # 4. 计算准确率
+                # 4. 使用业务规则模块计算准确率（批量更新）
+                logger.info("批量更新准确率...")
+                self.accuracy_calculator.batch_update_accuracy(source)
+                
+                # 获取准确率数据
                 accuracy = self.calc_prediction_accuracy(source)
                 all_accuracies[source] = accuracy
 

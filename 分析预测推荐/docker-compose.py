@@ -1,0 +1,121 @@
+"""
+Docker Compose配置文件
+整合PostgreSQL、Redis、Flask、Airflow等服务
+"""
+
+compose_content = """version: '3.8'
+
+services:
+  # PostgreSQL数据库
+  postgres:
+    image: postgres:14-alpine
+    container_name: lottery_postgres
+    environment:
+      POSTGRES_DB: lottery
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./schema_audit.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d lottery"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - lottery_network
+
+  # Redis缓存
+  redis:
+    image: redis:6-alpine
+    container_name: lottery_redis
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - lottery_network
+
+  # Flask后端服务
+  flask:
+    build: .
+    container_name: lottery_flask
+    environment:
+      - FLASK_APP=app.py
+      - FLASK_ENV=production
+      - DATABASE_URL=postgresql://admin:password@postgres:5432/lottery
+      - REDIS_URL=redis://redis:6379/0
+    volumes:
+      - .:/app
+    ports:
+      - "5000:5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - lottery_network
+
+  # Airflow调度
+  airflow-webserver:
+    image: apache/airflow:2.5.0
+    container_name: lottery_airflow_webserver
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://admin:password@postgres:5432/lottery
+      - AIRFLOW__CORE__LOAD_EXAMPLES=False
+      - AIRFLOW__WEBSERVER__EXPOSE_CONFIG=True
+    volumes:
+      - ./airflow_dags.py:/opt/airflow/dags/lottery_dag.py
+      - airflow_logs:/opt/airflow/logs
+      - airflow_data:/opt/airflow
+    ports:
+      - "8080:8080"
+    command: webserver
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - lottery_network
+
+  airflow-scheduler:
+    image: apache/airflow:2.5.0
+    container_name: lottery_airflow_scheduler
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://admin:password@postgres:5432/lottery
+      - AIRFLOW__CORE__LOAD_EXAMPLES=False
+    volumes:
+      - ./airflow_dags.py:/opt/airflow/dags/lottery_dag.py
+      - airflow_logs:/opt/airflow/logs
+      - airflow_data:/opt/airflow
+    command: scheduler
+    depends_on:
+      airflow-webserver:
+        condition: service_started
+    networks:
+      - lottery_network
+
+volumes:
+  postgres_data:
+  redis_data:
+  airflow_logs:
+  airflow_data:
+
+networks:
+  lottery_network:
+    driver: bridge
+"""
+
+with open('/Users/rs/AI/分析预测推荐/docker-compose.yml', 'w') as f:
+    f.write(compose_content)
+
+print("Docker Compose文件已创建")

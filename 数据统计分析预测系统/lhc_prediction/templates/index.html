@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>六合彩自动化数据系统</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f0f0f0; }
+        
+        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 15px 20px; }
+        .header h1 { font-size: 20px; text-align: center; }
+        .header-info { font-size: 12px; text-align: center; margin-top: 5px; opacity: 0.9; }
+        
+        .main-container { padding: 15px; max-width: 1400px; margin: 0 auto; }
+        
+        .section { background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 15px; overflow: hidden; border: 1px solid #e0e0e0; }
+        .section-title { padding: 12px 15px; font-weight: 600; color: #333; border-left: 4px solid #667eea; background: #f8f9fa; font-size: 14px; display: flex; justify-content: space-between; align-items: center; }
+        .section-title .model-info { font-size: 11px; color: #666; font-weight: normal; }
+        
+        .comparison-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        .comparison-table th { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 10px; text-align: center; font-weight: 600; }
+        .comparison-table td { padding: 10px; text-align: center; border-bottom: 1px solid #eee; }
+        .comparison-table .no-data { color: #999; padding: 20px; }
+        
+        .draw-card { padding: 12px; border-bottom: 1px dashed #ddd; }
+        .draw-card:last-child { border-bottom: none; }
+        
+        .draw-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .draw-title { font-size: 16px; font-weight: bold; color: #333; }
+        .draw-title .issue { color: #dc3545; font-size: 18px; }
+        .draw-time { font-size: 20px; font-weight: bold; color: #333; font-family: monospace; }
+        .draw-links { color: #dc3545; font-weight: bold; cursor: pointer; font-size: 14px; }
+        .draw-links:hover { text-decoration: underline; }
+        
+        .numbers-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+        .num-block { width: 75px; height: 75px; border-radius: 6px; display: flex; flex-direction: column; align-items: center; justify-content: center; color: white; font-weight: bold; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .num-block.green { background: linear-gradient(135deg, #28a745 0%, #20c997 100%); }
+        .num-block.red { background: linear-gradient(135deg, #dc3545 0%, #fd7e14 100%); }
+        .num-block.blue { background: linear-gradient(135deg, #007bff 0%, #6610f2 100%); }
+        .num-block .number { font-size: 26px; }
+        .num-block .zodiac { font-size: 12px; opacity: 0.9; }
+        .num-block .prob { font-size: 9px; opacity: 0.8; }
+        
+        .plus-sign { font-size: 24px; font-weight: bold; color: #999; margin: 0 5px; }
+        
+        .next-draw { margin-top: 10px; padding: 8px 12px; background: #fff8dc; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; }
+        .next-draw-text { font-size: 13px; color: #333; }
+        .next-draw-text .issue { color: #dc3545; font-weight: bold; }
+        .refresh-btn { background: linear-gradient(135deg, #fd7e14 0%, #f59e0b 100%); color: white; padding: 4px 12px; border-radius: 4px; font-size: 12px; font-weight: bold; cursor: pointer; }
+        .refresh-btn:hover { opacity: 0.9; }
+        
+        .prediction-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .prediction-title { font-size: 16px; font-weight: bold; color: #333; }
+        .prediction-title .issue { color: #dc3545; }
+        .generate-btn { background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white; padding: 4px 12px; border-radius: 4px; font-size: 12px; font-weight: bold; cursor: pointer; }
+        
+        .pred-section { background: #f8f9fa; border-radius: 6px; padding: 10px; margin-bottom: 10px; border: 1px solid #e0e0e0; }
+        .pred-section-title { font-size: 13px; font-weight: 600; color: #333; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+        .pred-section-title::before { content: ''; width: 3px; height: 14px; background: #667eea; border-radius: 2px; }
+        .pred-section-title .prob { font-size: 11px; color: #dc3545; font-weight: normal; }
+        
+        .triple-group { background: white; border-radius: 6px; padding: 8px; margin-bottom: 8px; border: 1px solid #ddd; }
+        .triple-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+        .triple-zodiacs { font-weight: 600; color: #333; font-size: 13px; }
+        .triple-prob { font-size: 11px; color: #dc3545; }
+        .triple-numbers { display: flex; flex-wrap: wrap; gap: 4px; }
+        .triple-num { background: #e8f4fd; padding: 2px 6px; border-radius: 3px; font-size: 11px; }
+        .triple-num .zodiac { color: #666; margin-left: 2px; }
+        
+        .zodiac-card { background: white; border-radius: 6px; padding: 8px; margin-bottom: 6px; border: 1px solid #ddd; }
+        .zodiac-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+        .zodiac-name { font-weight: 600; color: #333; font-size: 14px; }
+        .zodiac-prob { font-size: 11px; color: #dc3545; }
+        .zodiac-nums { display: flex; gap: 4px; flex-wrap: wrap; }
+        .zodiac-num { width: 32px; height: 32px; border-radius: 4px; display: flex; align-items: center; justify-content: center; color: white; font-size: 12px; font-weight: bold; }
+        
+        .result-section { background: #fff3cd; border-radius: 6px; padding: 10px; margin-top: 10px; border: 2px solid #ffc107; }
+        .result-section-title { font-size: 13px; font-weight: 600; color: #856404; margin-bottom: 8px; }
+        .result-item { display: flex; align-items: center; gap: 10px; padding: 5px 0; border-bottom: 1px dashed #ddd; }
+        .result-item:last-child { border-bottom: none; }
+        .result-label { font-size: 12px; color: #666; }
+        .result-value { font-weight: 600; color: #333; }
+        .result-correct { color: #28a745; }
+        .result-wrong { color: #dc3545; }
+        
+        .op-panel { padding: 15px; background: #f8f9fa; }
+        .op-panel .section-title { background: none; border: none; padding: 0 0 10px 0; }
+        .btn-group { display: flex; gap: 10px; flex-wrap: wrap; }
+        .btn { padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; font-size: 14px; font-weight: 500; }
+        .btn-primary { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
+        .btn-success { background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white; }
+        .btn-warning { background: linear-gradient(135deg, #fd7e14 0%, #f59e0b 100%); color: white; }
+        .btn:hover { opacity: 0.9; }
+        
+        @media (max-width: 768px) {
+            .num-block { width: 55px; height: 55px; }
+            .num-block .number { font-size: 18px; }
+            .num-block .zodiac { font-size: 10px; }
+            .draw-time { font-size: 14px; }
+            .draw-title { font-size: 14px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>六合彩自动化数据系统</h1>
+        <div class="header-info">
+            定时任务: 每日 21:45 自动执行 | 下次执行: <span id="nextRunTime">--</span> | 状态: <span id="schedulerStatus">检查中...</span>
+        </div>
+    </div>
+
+    <div class="main-container">
+        <div class="section">
+            <div class="section-title">
+                <span>上期开奖记录对比</span>
+                <span style="float:right; font-size:12px; color:#666; font-weight:normal;" id="issueRange">统计范围: --</span>
+            </div>
+            <div id="drawComparison" style="padding: 15px;">
+                <div class="no-data" style="text-align:center;color:#999;">暂无数据</div>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="section-title">
+                <span>实时开奖信息</span>
+            </div>
+            
+            <div class="draw-card" id="amDrawCard">
+                <div class="draw-header">
+                    <span class="draw-title">澳门第<span class="issue" id="amIssue">--</span>期</span>
+                    <span class="draw-time" id="amCountdown">--:--:--</span>
+                    <span class="draw-links" onclick="showHistory('am')">历史记录</span>
+                </div>
+                <div class="numbers-row" id="amNumbers">
+                    <div class="no-data" style="color:#999;">暂无开奖数据</div>
+                </div>
+                <div class="next-draw">
+                    <span class="next-draw-text">澳门第<span class="issue" id="amNextIssue">--</span>期: <span id="amNextDate">--</span></span>
+                    <span class="refresh-btn" onclick="generatePrediction('am')">刷新</span>
+                </div>
+            </div>
+
+            <div class="draw-card" id="hkDrawCard">
+                <div class="draw-header">
+                    <span class="draw-title">香港第<span class="issue" id="hkIssue">--</span>期</span>
+                    <span class="draw-time" id="hkCountdown">--:--:--</span>
+                    <span class="draw-links" onclick="showHistory('hk')">历史记录</span>
+                </div>
+                <div class="numbers-row" id="hkNumbers">
+                    <div class="no-data" style="color:#999;">暂无开奖数据</div>
+                </div>
+                <div class="next-draw">
+                    <span class="next-draw-text">香港第<span class="issue" id="hkNextIssue">--</span>期: <span id="hkNextDate">--</span></span>
+                    <span class="refresh-btn" onclick="generatePrediction('hk')">刷新</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="section-title">
+                <span>下期预测推荐</span>
+                <span class="model-info" id="modelInfo">模型版本: --</span>
+            </div>
+            
+            <div class="draw-card">
+                <div class="prediction-header">
+                    <span class="prediction-title">🇲🇴 澳门第<span class="issue" id="amPredIssue">--</span>期</span>
+                    <span class="generate-btn" onclick="generatePrediction('am')">生成预测</span>
+                </div>
+                
+                <div id="amPredContent">
+                    <div class="no-data" style="color:#999;text-align:center;padding:20px;">暂无预测数据</div>
+                </div>
+                
+                <div id="amResultContent"></div>
+            </div>
+
+            <div class="draw-card">
+                <div class="prediction-header">
+                    <span class="prediction-title">🇭🇰 香港第<span class="issue" id="hkPredIssue">--</span>期</span>
+                    <span class="generate-btn" onclick="generatePrediction('hk')">生成预测</span>
+                </div>
+                
+                <div id="hkPredContent">
+                    <div class="no-data" style="color:#999;text-align:center;padding:20px;">暂无预测数据</div>
+                </div>
+                
+                <div id="hkResultContent"></div>
+            </div>
+        </div>
+
+        <div class="section op-panel">
+            <div class="section-title">
+                <span>操作面板</span>
+                <button class="btn" style="padding:5px 15px;background:#28a745;color:white;font-size:12px;margin-left:auto;" onclick="showLogsModal()">查看日志</button>
+            </div>
+            <div class="btn-group">
+                <button class="btn btn-primary" onclick="crawlData('am')">爬取澳门数据</button>
+                <button class="btn btn-primary" onclick="crawlData('hk')">爬取香港数据</button>
+                <button class="btn btn-success" onclick="generatePrediction('am')">生成澳门预测</button>
+                <button class="btn btn-success" onclick="generatePrediction('hk')">生成香港预测</button>
+                <button class="btn btn-warning" onclick="showUpdateModal('am')">录入澳门特码</button>
+                <button class="btn btn-warning" onclick="showUpdateModal('hk')">录入香港特码</button>
+                <button class="btn btn-primary" onclick="exportAll()">导出Excel</button>
+                <button class="btn btn-success" onclick="triggerManualTask()">手动执行</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="logsModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);justify-content:center;align-items:center;z-index:1000;overflow-y:auto;">
+        <div style="background:white;padding:20px;border-radius:10px;width:95%;max-width:900px;max-height:90vh;overflow-y:auto;">
+            <h3 style="margin-bottom:15px;">任务执行日志</h3>
+            <div id="logsContent" style="margin-bottom:15px;"></div>
+            <div style="display:flex;gap:10px;justify-content:flex-end;">
+                <button class="btn btn-success" onclick="refreshLogs()">刷新日志</button>
+                <button class="btn" style="background:#6c757d;color:white;" onclick="document.getElementById('logsModal').style.display='none'">关闭</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="updateModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);justify-content:center;align-items:center;z-index:1000;">
+        <div style="background:white;padding:20px;border-radius:10px;width:90%;max-width:400px;">
+            <h3 style="margin-bottom:15px;">录入实际特码</h3>
+            <input type="hidden" id="modalRegion">
+            <input type="hidden" id="modalIssue">
+            <input type="number" id="actualSpecial" placeholder="特码数字(1-49)" style="width:100%;padding:10px;margin-bottom:15px;border:1px solid #ddd;border-radius:5px;">
+            <div style="display:flex;gap:10px;">
+                <button class="btn btn-success" onclick="updateAccuracy()">确认</button>
+                <button class="btn" style="background:#6c757d;color:white;" onclick="document.getElementById('updateModal').style.display='none'">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function formatIssue(issue) {
+            if (!issue) return '--';
+            const match = issue.match(/(\d{4})(\d{3})/);
+            if (match) {
+                return `第${parseInt(match[2])}期`;
+            }
+            return `第${issue}期`;
+        }
+        
+        const ZODIAC_MAP = {
+            '鼠': [7, 19, 31, 43],
+            '牛': [8, 20, 32, 44],
+            '虎': [9, 21, 33, 45],
+            '兔': [10, 22, 34, 46],
+            '龙': [11, 23, 35, 47],
+            '蛇': [12, 24, 36, 48],
+            '马': [1, 13, 25, 37, 49],
+            '羊': [2, 14, 26, 38],
+            '猴': [3, 15, 27, 39],
+            '鸡': [4, 16, 28, 40],
+            '狗': [5, 17, 29, 41],
+            '猪': [6, 18, 30, 42]
+        };
+
+        const ZODIAC_BY_NUMBER = {};
+        Object.entries(ZODIAC_MAP).forEach(([zodiac, numbers]) => {
+            numbers.forEach(num => ZODIAC_BY_NUMBER[num] = zodiac);
+        });
+
+        const ZODIAC_COLORS = {
+            '鼠': '#ff6b6b', '牛': '#4ecdc4', '虎': '#ffe66d', '兔': '#95e1d3',
+            '龙': '#74b9ff', '蛇': '#a29bfe', '马': '#fd79a8', '羊': '#55a3ff',
+            '猴': '#00b894', '鸡': '#fdcb6e', '狗': '#e17055', '猪': '#fab1a0'
+        };
+
+        const COLORS = ['green', 'red', 'blue'];
+
+        function getZodiac(number) {
+            return ZODIAC_BY_NUMBER[number] || '未知';
+        }
+
+        function getColorClass(index) {
+            return COLORS[index % COLORS.length];
+        }
+
+        function getZodiacColor(zodiac) {
+            return ZODIAC_COLORS[zodiac] || '#667eea';
+        }
+
+        async function loadDashboardData() {
+            try {
+                const response = await fetch('/api/dashboard_data');
+                const data = await response.json();
+                
+                if (data.success) {
+                    displayDrawComparison(data.data);
+                    displayDrawCard('am', data.data.am);
+                    displayDrawCard('hk', data.data.hk);
+                    displayPredictions(data.data);
+                    loadSchedulerStatus();
+                    
+                    // 显示期号范围
+                    const amFirst = data.data.am.issue_range?.first_issue || '--';
+                    const amLast = data.data.am.issue_range?.last_issue || '--';
+                    const hkFirst = data.data.hk.issue_range?.first_issue || '--';
+                    const hkLast = data.data.hk.issue_range?.last_issue || '--';
+                    
+                    const amRange = amFirst !== '--' ? `澳门: ${formatIssue(amFirst)} ~ ${formatIssue(amLast)}` : '';
+                    const hkRange = hkFirst !== '--' ? `香港: ${formatIssue(hkFirst)} ~ ${formatIssue(hkLast)}` : '';
+                    
+                    document.getElementById('issueRange').textContent = 
+                        `统计范围: ${amRange}${amRange && hkRange ? ' | ' : ''}${hkRange}`;
+                }
+            } catch (error) {
+                console.error('加载数据失败:', error);
+            }
+        }
+
+        function displayDrawComparison(data) {
+            const container = document.getElementById('drawComparison');
+            let html = '';
+            
+            ['am', 'hk'].forEach(region => {
+                const regionData = data[region];
+                const lastDraw = regionData.last_draw;
+                if (lastDraw) {
+                    const numbers = lastDraw.平码.split(',').map(n => parseInt(n));
+                    const special = parseInt(lastDraw.特码);
+                    const formattedIssue = formatIssue(lastDraw.期号);
+                    
+                    html += `<div style="margin-bottom: 20px; border-bottom: 1px dashed #ddd; padding-bottom: 15px;">`;
+                    html += `<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">`;
+                    html += `<span style="font-weight: bold; font-size: 16px;">${lastDraw.地区}${formattedIssue}</span>`;
+                    html += `<span style="color: #666; font-size: 13px;">${lastDraw.开奖日期}</span>`;
+                    html += `</div>`;
+                    
+                    html += `<div class="numbers-row">`;
+                    numbers.forEach((num, idx) => {
+                        const zodiac = getZodiac(num);
+                        const color = getColorClass(idx);
+                        html += `<div class="num-block ${color}">`;
+                        html += `<div class="number">${num}</div>`;
+                        html += `<div class="zodiac">${zodiac}</div>`;
+                        html += `</div>`;
+                    });
+                    html += `<span class="plus-sign">+</span>`;
+                    
+                    const specialColor = getColorClass(numbers.length);
+                    html += `<div class="num-block ${specialColor}">`;
+                    html += `<div class="number">${special}</div>`;
+                    html += `<div class="zodiac">${getZodiac(special)}</div>`;
+                    html += `</div>`;
+                    html += `</div>`;
+                    
+                    html += `</div>`;
+                }
+            });
+            
+            container.innerHTML = html || '<div class="no-data" style="text-align:center;color:#999;">暂无数据</div>';
+        }
+
+        function displayDrawCard(region, data) {
+            const lastIssue = data.last_draw?.期号?.replace(/^\d{4}/, '') || '--';
+            document.getElementById(`${region}Issue`).textContent = lastIssue !== '--' ? `第${lastIssue}期` : '--';
+            
+            const numbersEl = document.getElementById(`${region}Numbers`);
+            if (data.last_draw) {
+                const numbers = data.last_draw.平码.split(',').map(n => parseInt(n));
+                const special = parseInt(data.last_draw.特码);
+                
+                let html = '';
+                numbers.forEach((num, idx) => {
+                    const zodiac = getZodiac(num);
+                    const color = getColorClass(idx);
+                    html += `<div class="num-block ${color}">
+                        <div class="number">${num}</div>
+                        <div class="zodiac">${zodiac}</div>
+                    </div>`;
+                });
+                html += '<span class="plus-sign">+</span>';
+                
+                const specialColor = getColorClass(numbers.length);
+                html += `<div class="num-block ${specialColor}">
+                    <div class="number">${special}</div>
+                    <div class="zodiac">${getZodiac(special)}</div>
+                </div>`;
+                
+                numbersEl.innerHTML = html;
+            } else {
+                numbersEl.innerHTML = '<div class="no-data" style="color:#999;">暂无开奖数据</div>';
+            }
+            
+            const nextIssueNum = data.next_issue?.replace(/^\d{4}/, '') || '--';
+            document.getElementById(`${region}NextIssue`).textContent = nextIssueNum !== '--' ? `第${nextIssueNum}期` : '--';
+            document.getElementById(`${region}PredIssue`).textContent = nextIssueNum !== '--' ? `第${nextIssueNum}期` : '--';
+            
+            const today = new Date();
+            const nextDate = new Date(today);
+            if (region === 'am') {
+                nextDate.setDate(today.getDate() + (6 - today.getDay() + 7) % 7);
+            } else {
+                nextDate.setDate(today.getDate() + (0 - today.getDay() + 7) % 7);
+            }
+            document.getElementById(`${region}NextDate`).textContent = `${String(nextDate.getMonth()+1).padStart(2,'0')}月${String(nextDate.getDate()).padStart(2,'0')}日 星期${'日一二三四五六'[nextDate.getDay()]} 21点32分`;
+        }
+
+        function displayPredictions(data) {
+            document.getElementById('modelInfo').textContent = '模型版本: v2.1.0 | 总数据: -- 条';
+            
+            ['am', 'hk'].forEach(region => {
+                const regionData = data[region];
+                const pred = regionData.next_prediction;
+                const el = document.getElementById(`${region}PredContent`);
+                const resultEl = document.getElementById(`${region}ResultContent`);
+                
+                let html = '';
+                
+                if (pred) {
+                    if (pred.special_6) {
+                        const special6 = eval(pred.special_6);
+                        html += `<div class="pred-section">
+                            <div class="pred-section-title">特码6只生肖含数字</div>
+                            <div class="numbers-row">`;
+                        special6.forEach((item, idx) => {
+                            const color = getColorClass(idx);
+                            html += `<div class="num-block ${color}">
+                                <div class="number">${item.number}</div>
+                                <div class="zodiac">${item.zodiac}</div>
+                                <div class="prob">${item.probability}%</div>
+                            </div>`;
+                        });
+                        html += `</div></div>`;
+                    }
+                    
+                    if (pred.special_6_zodiac) {
+                        const special6Zodiac = eval(pred.special_6_zodiac);
+                        html += `<div class="pred-section">
+                            <div class="pred-section-title">6肖特码推荐 <span class="prob">按生肖概率排序</span></div>`;
+                        special6Zodiac.forEach((item, idx) => {
+                            const bgColor = getZodiacColor(item.zodiac);
+                            html += `<div class="zodiac-card">
+                                <div class="zodiac-header">
+                                    <span class="zodiac-name">${idx + 1}. ${item.zodiac}</span>
+                                    <span class="zodiac-prob">概率: ${item.probability}% | 历史: ${item.frequency}次</span>
+                                </div>
+                                <div class="zodiac-nums">`;
+                            item.numbers.forEach(num => {
+                                html += `<span class="zodiac-num" style="background:${bgColor}">${num}</span>`;
+                            });
+                            html += `</div></div>`;
+                        });
+                        html += `</div>`;
+                    }
+                    
+                    if (pred.consecutive_3_zodiac) {
+                        const consecutive = eval(pred.consecutive_3_zodiac);
+                        html += `<div class="pred-section">
+                            <div class="pred-section-title">4组3连肖组合 <span class="prob">连续出现概率</span></div>`;
+                        consecutive.forEach((item, idx) => {
+                            html += `<div class="triple-group">
+                                <div class="triple-header">
+                                    <span class="triple-zodiacs">第${idx + 1}组: ${item.zodiacs.join(' → ')}</span>
+                                    <span class="triple-prob">${item.probability}%</span>
+                                </div>
+                                <div class="triple-numbers">`;
+                            item.numbers.forEach(num => {
+                                const z = getZodiac(num);
+                                html += `<span class="triple-num">${num}<span class="zodiac">(${z})</span></span>`;
+                            });
+                            html += `</div></div>`;
+                        });
+                        html += `</div>`;
+                    }
+                    
+                    if (pred.hot_12) {
+                        const hot12 = eval(pred.hot_12);
+                        html += `<div class="pred-section">
+                            <div class="pred-section-title">热门12数字</div>
+                            <div class="numbers-row">`;
+                        hot12.forEach((item, idx) => {
+                            const color = getColorClass(idx + 6);
+                            html += `<div class="num-block ${color}" style="width:50px;height:50px;">
+                                <div class="number" style="font-size:16px;">${item.number}</div>
+                                <div class="zodiac" style="font-size:9px;">${item.zodiac}</div>
+                            </div>`;
+                        });
+                        html += `</div></div>`;
+                    }
+                    
+                    resultEl.innerHTML = '';
+                } else {
+                    html = '<div class="no-data" style="color:#999;text-align:center;padding:20px;">暂无预测数据</div>';
+                    resultEl.innerHTML = '';
+                }
+                
+                el.innerHTML = html;
+            });
+        }
+
+        async function loadSchedulerStatus() {
+            try {
+                const response = await fetch('/api/scheduler_status');
+                const data = await response.json();
+                if (data.success) {
+                    document.getElementById('nextRunTime').textContent = data.data.next_run_time;
+                    document.getElementById('schedulerStatus').textContent = data.data.running ? '运行中' : '已停止';
+                }
+            } catch (error) {
+                console.error('加载调度器状态失败:', error);
+            }
+        }
+
+        async function crawlData(region) {
+            if (!confirm(`确定要爬取${region === 'am' ? '澳门' : '香港'}数据吗？`)) return;
+            
+            try {
+                const response = await fetch('/api/crawl', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ region })
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    alert(`成功爬取 ${data.count} 条数据`);
+                    loadDashboardData();
+                } else {
+                    alert('爬取失败: ' + data.error);
+                }
+            } catch (error) {
+                alert('爬取失败: ' + error.message);
+            }
+        }
+
+        async function generatePrediction(region) {
+            try {
+                const response = await fetch('/api/dashboard_data');
+                const data = await response.json();
+                
+                if (!data.success || !data.data[region].next_issue) {
+                    alert('请先爬取数据');
+                    return;
+                }
+                
+                const issue = data.data[region].next_issue;
+                
+                const predResponse = await fetch('/api/predict', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ region, issue })
+                });
+                const predData = await predResponse.json();
+                
+                if (predData.success) {
+                    alert(`${issue} 期预测生成成功`);
+                    loadDashboardData();
+                } else {
+                    alert('生成预测失败: ' + predData.error);
+                }
+            } catch (error) {
+                alert('生成预测失败: ' + error.message);
+            }
+        }
+
+        function showUpdateModal(region) {
+            const issue = document.getElementById(`${region}NextIssue`).textContent;
+            if (!issue || issue === '--') {
+                alert('请先生成预测');
+                return;
+            }
+            document.getElementById('modalRegion').value = region;
+            document.getElementById('modalIssue').value = issue;
+            document.getElementById('actualSpecial').value = '';
+            document.getElementById('updateModal').style.display = 'flex';
+        }
+
+        async function updateAccuracy() {
+            const region = document.getElementById('modalRegion').value;
+            const issue = document.getElementById('modalIssue').value;
+            const actualSpecial = parseInt(document.getElementById('actualSpecial').value);
+            
+            if (!actualSpecial || actualSpecial < 1 || actualSpecial > 49) {
+                alert('请输入有效的特码(1-49)');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/update_accuracy', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ region, issue: `2026${issue}`, actual_special: actualSpecial })
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    alert(`准确率已更新: ${data.accuracy.toFixed(2)}%`);
+                    document.getElementById('updateModal').style.display = 'none';
+                    loadDashboardData();
+                } else {
+                    alert('更新失败: ' + data.error);
+                }
+            } catch (error) {
+                alert('更新失败: ' + error.message);
+            }
+        }
+
+        function showHistory(region) {
+            alert(`${region === 'am' ? '澳门' : '香港'}历史记录功能开发中...`);
+        }
+
+        async function triggerManualTask() {
+            if (!confirm('确定要手动执行定时任务吗？')) return;
+            
+            try {
+                const response = await fetch('/api/trigger_task', { method: 'POST' });
+                const data = await response.json();
+                
+                if (data.success) {
+                    alert('手动任务已触发，请等待执行完成');
+                } else {
+                    alert('触发失败: ' + data.error);
+                }
+            } catch (error) {
+                alert('触发失败: ' + error.message);
+            }
+        }
+
+        async function exportAll() {
+            try {
+                const response = await fetch('/api/export_all', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ bet_amount: 10, odds: 45 })
+                });
+                
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'lhc_predictions_all.xlsx';
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                } else {
+                    alert('导出失败');
+                }
+            } catch (error) {
+                alert('导出失败: ' + error.message);
+            }
+        }
+
+        async function showLogsModal() {
+            document.getElementById('logsModal').style.display = 'flex';
+            await refreshLogs();
+        }
+
+        async function refreshLogs() {
+            try {
+                const response = await fetch('/api/execution_logs?limit=50');
+                const data = await response.json();
+                
+                if (data.success) {
+                    let html = '<h4 style="margin-bottom:10px;">最近执行记录</h4>';
+                    html += '<table style="width:100%;border-collapse:collapse;font-size:13px;">';
+                    html += '<tr style="background:#667eea;color:white;">';
+                    html += '<th style="padding:8px;border:1px solid #ddd;">任务名称</th>';
+                    html += '<th style="padding:8px;border:1px solid #ddd;">开始时间</th>';
+                    html += '<th style="padding:8px;border:1px solid #ddd;">结束时间</th>';
+                    html += '<th style="padding:8px;border:1px solid #ddd;">状态</th>';
+                    html += '<th style="padding:8px;border:1px solid #ddd;">数据量</th>';
+                    html += '<th style="padding:8px;border:1px solid #ddd;">错误信息</th>';
+                    html += '</tr>';
+                    
+                    data.data.recent_logs.forEach(log => {
+                        const statusColor = log.status === 'success' ? '#28a745' : (log.status === 'failed' ? '#dc3545' : '#ffc107');
+                        html += '<tr>';
+                        html += `<td style="padding:8px;border:1px solid #ddd;">${log.task_name}</td>`;
+                        html += `<td style="padding:8px;border:1px solid #ddd;">${log.start_time || '--'}</td>`;
+                        html += `<td style="padding:8px;border:1px solid #ddd;">${log.end_time || '--'}</td>`;
+                        html += `<td style="padding:8px;border:1px solid #ddd;color:${statusColor};font-weight:bold;">${log.status}</td>`;
+                        html += `<td style="padding:8px;border:1px solid #ddd;">${log.data_count || 0}</td>`;
+                        html += `<td style="padding:8px;border:1px solid #ddd;color:#dc3545;">${log.error_message || '--'}</td>`;
+                        html += '</tr>';
+                    });
+                    html += '</table>';
+                    
+                    if (data.data.failed_logs.length > 0) {
+                        html += '<h4 style="margin:20px 0 10px 0;color:#dc3545;">最近7天失败记录</h4>';
+                        html += '<table style="width:100%;border-collapse:collapse;font-size:13px;">';
+                        html += '<tr style="background:#dc3545;color:white;">';
+                        html += '<th style="padding:8px;border:1px solid #ddd;">任务名称</th>';
+                        html += '<th style="padding:8px;border:1px solid #ddd;">开始时间</th>';
+                        html += '<th style="padding:8px;border:1px solid #ddd;">错误信息</th>';
+                        html += '</tr>';
+                        
+                        data.data.failed_logs.forEach(log => {
+                            html += '<tr>';
+                            html += `<td style="padding:8px;border:1px solid #ddd;">${log.task_name}</td>`;
+                            html += `<td style="padding:8px;border:1px solid #ddd;">${log.start_time || '--'}</td>`;
+                            html += `<td style="padding:8px;border:1px solid #ddd;color:#dc3545;">${log.error_message || '--'}</td>`;
+                            html += '</tr>';
+                        });
+                        html += '</table>';
+                    }
+                    
+                    document.getElementById('logsContent').innerHTML = html;
+                } else {
+                    document.getElementById('logsContent').innerHTML = '<p style="color:#dc3545;">加载日志失败</p>';
+                }
+            } catch (error) {
+                document.getElementById('logsContent').innerHTML = '<p style="color:#dc3545;">加载日志失败: ' + error.message + '</p>';
+            }
+        }
+
+        loadDashboardData();
+        setInterval(loadSchedulerStatus, 60000);
+    </script>
+</body>
+</html>
